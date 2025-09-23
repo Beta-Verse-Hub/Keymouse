@@ -1,106 +1,90 @@
 # Importing important libraries
 import pynput.mouse as mouse
-import pynput.keyboard as keyboard
+from keyboard import is_pressed, on_press, wait
 import threading
+import tkinter
 from time import sleep
 
 
 
 # Defining global variables
 mouseCon = mouse.Controller()
-keyboardCon = keyboard.Controller()
-previous_keys = []
+mouse_mode = False
+speed = 3
 
 
 
 # Defining functions
 def listen():
     """
-    Starts a keyboard listener in a separate thread and waits for it to finish.
+    Listens for keyboard inputs to control the mouse.
 
-    This function starts a keyboard listener with the on_press and on_release
-    functions as the event handlers. It then waits for the listener to finish
+    It checks for the following keyboard inputs:
 
-    in a separate thread.
+    - Shift + Ctrl: Toggle mouse mode
+    - Alt: Toggle speed between 1 and 3
+    - Up, Down, Left, Right: Move the mouse in the respective direction
+    - Ctrl + Shift + Esc: Quit the program
 
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
+    It continues to listen until the program is quit.
     """
-    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-        listener.join()
+    global mouseCon, mouse_mode, speed
+
+    while not(is_pressed("esc")):
+
+        if is_pressed("shift") and is_pressed("ctrl"):
+
+            if mouse_mode:
+                mouse_mode = False
+            else:
+                mouse_mode = True
+
+            print(f"Mouse mode: {mouse_mode}")
+
+            while is_pressed("shift") and is_pressed("ctrl"):
+                sleep(0.01)
+
+        if not mouse_mode:
+            continue
+
+        wait(["up", "down", "left", "right", "ctrl", "shift", "esc", "alt"])
+
+        if is_pressed("ctrl") and is_pressed("shift"):
+            continue
+
+        if is_pressed("esc"):
+            break
+
+        if is_pressed("alt"):
+            if speed == 1:
+                speed = 7
+            else:
+                speed = 3
+
+            print(f"Speed: {speed}")
+
+            while is_pressed("alt"):
+                sleep(0.01)
+
+        if is_pressed("up"):
+            mouseCon.move(0,-speed)
+
+        if is_pressed("down"):
+            mouseCon.move(0,speed)
+
+        if is_pressed("left"):
+            mouseCon.move(-speed,0)
+
+        if is_pressed("right"):
+            mouseCon.move(speed,0)
+
+        sleep(0.01)
 
 
-def on_press(key):
-    """
-    Handles the event when a key is pressed.
+if __name__ == "__main__":
+    # Defining threads
+    # TkinterThread = threading.Thread(target=Tkinter_loop, args=())
+    # TkinterThread.start()
 
-    This function is called when a key is pressed. It appends the key to the
-    previous_keys list and prints the key.
-
-    Global Variables
-    ----------------
-    mouseCon : pynput.mouse.Controller
-        The mouse controller object.
-    keyboardCon : pynput.keyboard.Controller
-        The keyboard controller object.
-    previous_keys : list
-        The list of previous keys pressed.
-
-    Parameters
-    ----------
-    key : pynput.keyboard.Key
-        The key that was pressed.
-    
-    Returns
-    -------
-    None
-    """
-    global mouseCon, keyboardCon, previous_keys
-    previous_keys.append(key)
-    print(key)
-
-
-def on_release(key):
-    """
-    Handles the event when a key is released.
-
-    This function is called when a key is released. It checks if the previous key
-    pressed was the shift key and the control key. If so, it prints a message
-    indicating that the water bucket has been released and resets the list of
-    previous keys. If the previous key was not the shift key, it resets the list of
-    previous keys.
-
-    Global Variables
-    -----------------
-    mouseCon : pynput.mouse.Controller
-        The mouse controller object.
-    keyboardCon : pynput.keyboard.Controller
-        The keyboard controller object.
-    previous_keys : list
-        The list of previous keys pressed.
-
-    Parameters
-    ----------
-    key : pynput.keyboard.Key
-        The key that was released.
-
-    Returns
-    -------
-    None
-    """
-    global mouseCon, keyboardCon, previous_keys
-    if previous_keys == [keyboard.Key.shift, keyboard.Key.ctrl_l]:
-        print("Water bucket RELEASE!")
-        previous_keys = []
-    elif not previous_keys == [keyboard.Key.shift]:
-        previous_keys = []
-
-
-# Defining threads
-listeningThread = threading.Thread(target=listen, args=())
-listeningThread.start()
+    listeningThread = threading.Thread(target=listen, args=())
+    listeningThread.start()
