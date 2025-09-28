@@ -1,155 +1,531 @@
-# Importing important libraries
-import pynput.mouse as mouse
-from keyboard import is_pressed, block_key, unblock_key, release
+# Importing modules
+from pynput import keyboard, mouse
 import threading
-import tkinter
-from time import sleep
+import time
+import sys
 
 
 
-# Defining global variables
-mouseCon = mouse.Controller()
-mouse_mode = False
+# GLOBAL VARIABLES
+
+# Running variable
+running = True
+
+# Speeds
 min_mouse_speed = 3
 max_mouse_speed = 7
-mouse_speed = min_mouse_speed
 scroll_speed = 2
 
+# Mouse parameters
+mouseCon = mouse.Controller()
+mouse_mode = False
+mouse_speed = min_mouse_speed
+
+# Pressed key variables
+pressed = set()
+pressed_lock = threading.Lock()
+
+# Listeners
+non_supp_listener = None
+supp_listener = None
 
 
-# Defining functions
-def block_keys(state: bool):
+
+# FUNCTIONS
+
+# Utility functions
+def name_from_key(key):
     """
-    Blocks all keys on the keyboard if state is True, or unblocks them if state is False.
+    Returns the name of a key object as a lowercase string.
 
-    :param state: A boolean indicating whether to block or unblock the keys.
-    :type state: bool
+    For alphanumeric keys, this is the character itself (e.g. "a" or "A" become "a").
+    For other keys, this is the name of the key (e.g. "ctrl" or "f12").
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key object to get the name from.
+
+    Returns
+    -------
+    str
+        The lowercase name of the key.
     """
-    keys = (
-        [chr(c) for c in range(32, 127)]   # space to ~
-        + ["up", "down", "left", "right",
-           "shift", "ctrl", "alt",
-           "caps lock", "tab", "enter", "backspace"]
-    )
+    # If it's a KeyCode (alphanumeric, symbols)
+    if isinstance(key, keyboard.KeyCode):
+        if key.char is not None:
+            return key.char.lower()
+        return str(key)
+    
+    # If it's a Key (special key: arrows, esc, f12, etc.)
+    if isinstance(key, keyboard.Key):
+        return key.name.lower()
 
-    for k in keys:
-        try:
-            if state:
-                block_key(k)
-            else:
-                unblock_key(k)
-        except:
-            pass
+    return str(key).lower()  # generic fallback
 
-def listen():
+
+def key_present(pressed_keys, wanted_keys):
     """
-    Listens for keyboard events and controls the mouse accordingly.
+    Checks if a given key is present in a set of currently pressed keys.
 
-    Keys and their corresponding actions are as follows:
-    - shift + ctrl: toggle mouse mode
-    - alt: toggle mouse speed
-    - up/down/left/right: moves the mouse in the respective direction
-    - z/x/c: performs a left/middle/right click respectively
-    - s/w: scrolls the mouse down/up respectively
-    - a/d: scrolls the mouse left/right respectively
+    Parameters
+    ----------
+    pressed_keys : set
+        A set of currently pressed keys.
+    wanted_keys : str
+        The key to search for.
 
-    The function will terminate when the "esc" key is pressed.
+    Returns
+    -------
+    bool
+        True if the key is present, False otherwise.
     """
-    global mouseCon, mouse_mode, mouse_speed
+    for k in pressed_keys:
+        if k == wanted_keys or k.startswith(wanted_keys):
+            return True
+    return False
 
-    while not(is_pressed("esc") and mouse_mode):
 
-        if is_pressed("print screen") and is_pressed("F12"):
+def toggle_combo_present(pressed_keys):
+    """
+    Checks if both the PrintScreen and F12 keys are present in the given set of pressed keys.
 
-            if mouse_mode:
-                mouse_mode = False
-                block_keys(False)
-            else:
-                mouse_mode = True
-                block_keys(True)
+    Parameters
+    ----------
+    pressed_keys : set
+        A set of currently pressed keys.
 
-            release("print screen")
-            release("F12")
+    Returns
+    -------
+    bool
+        True if both keys are present, False otherwise.
+    """
+    ps_names = ("print_screen", "print screen", "printscreen", "prt_sc")
+    f12_names = ("f12",)
+    return any(name in pressed_keys for name in ps_names) and any(name in pressed_keys for name in f12_names)
 
-            print(f"Mouse mode: {mouse_mode}")
+# Listener Callbacks
 
-            while is_pressed("print screen") and is_pressed("F12"):
-                sleep(0.01)
+def on_press_common(key):
+    """
+    A common callback for the on_press event of both the suppressed and non-suppressed listeners.
 
+    This callback is responsible for adding the name of the pressed key to the set of currently pressed keys.
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key that was pressed.
+
+    Returns
+    -------
+    None
+    """
+    n = name_from_key(key)
+    with pressed_lock:
+        pressed.add(n)
+
+
+def on_release_common(key):
+    """
+    A common callback for the on_release event of both the suppressed and non-suppressed listeners.
+
+    This callback is responsible for removing the name of the released key from the set of currently pressed keys.
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key that was released.
+
+    Returns
+    -------
+    None
+    """
+    n = name_from_key(key)
+    with pressed_lock:
+        pressed.discard(n)
+
+
+# Non-suppressed callbacks
+
+def on_press_non_supp(key):  
+    """
+    The callback for the on_press event of the non-suppressed listener.
+
+    This function is responsible for adding the name of the pressed key to the set of currently pressed keys.
+
+    Additionally, it checks if both the PrintScreen and F12 keys are present and, if so, starts the suppressed mode in a separate thread.
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key that was pressed.
+
+    Returns
+    -------
+    None
+    """
+    on_press_common(key)
+    
+    with pressed_lock:
+        pressed_keys = set(pressed)
+    
+    if toggle_combo_present(pressed_keys):
+        threading.Thread(target=enter_mouse_mode, daemon=True).start()
+
+
+def on_release_non_supp(key):
+    """
+    The callback for the on_release event of the non-suppressed listener.
+
+    This function is responsible for removing the name of the released key from the set of currently pressed keys.
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key that was released.
+
+    Returns
+    -------
+    None
+    """
+    on_release_common(key)
+
+
+# Suppressed callbacks
+
+def on_press_supp(key):
+    """
+    The callback for the on_press event of the suppressed listener.
+
+    This function is responsible for adding the name of the pressed key to the set of currently pressed keys.
+
+    Additionally, it checks if both the PrintScreen and F12 keys are present and, if so, exits the suppressed mode by calling exit_mouse_mode in a separate thread.
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key that was pressed.
+
+    Returns
+    -------
+    None
+    """
+    on_press_common(key)
+    
+    with pressed_lock:
+        pressed_keys = set(pressed)
+    
+    if toggle_combo_present(pressed_keys):
+        threading.Thread(target=exit_mouse_mode, daemon=True).start()
+
+
+def on_release_supp(key):
+    """
+    The callback for the on_release event of the suppressed listener.
+
+    This function is responsible for removing the name of the released key from the set of currently pressed keys.
+
+    Parameters
+    ----------
+    key : pynput.keyboard.Key
+        The key that was released.
+
+    Returns
+    -------
+    None
+    """
+    on_release_common(key)
+
+
+# Listeners
+
+def start_non_supp_listener():
+    """
+    Starts the non-suppressed listener if it is not already running.
+
+    The non-suppressed listener is responsible for capturing the PrintScreen + F12 combination and starting the suppressed mode.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global non_supp_listener
+
+    if non_supp_listener is None:
+        non_supp_listener = keyboard.Listener(on_press=on_press_non_supp, on_release=on_release_non_supp, daemon = True)
+        non_supp_listener.start()
+
+
+def stop_non_supp_listener():
+    """
+    Stops the non-suppressed listener if it is running.
+
+    The non-suppressed listener is responsible for capturing the PrintScreen + F12 combination and starting the suppressed mode.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global non_supp_listener
+
+    if non_supp_listener is not None:
+        non_supp_listener.stop()
+        non_supp_listener = None
+
+
+def start_supp_listener():
+    """
+    Starts the suppressed listener if it is not already running.
+
+    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + F12 combination is pressed.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global supp_listener
+
+    if supp_listener is None:
+        supp_listener = keyboard.Listener(on_press=on_press_supp, on_release=on_release_supp, daemon = True, suppress=True)
+        supp_listener.start()
+
+
+def stop_supp_listener():
+    """
+    Stops the suppressed listener if it is running.
+
+    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + F12 combination is pressed.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global supp_listener
+
+    if supp_listener is not None:
+        supp_listener.stop()
+        supp_listener = None
+
+
+# App exit
+
+def exit_app():
+    """
+    Exits the application.
+
+    This function is responsible for stopping the non-suppressed and suppressed listeners and exiting the application.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global running
+    stop_non_supp_listener()
+    stop_supp_listener()
+    running = False
+    sys.exit(0)
+
+
+# Mode switching
+
+def enter_mouse_mode():
+    """
+    Enters mouse mode.
+
+    Clears the set of currently pressed keys to avoid sticky keys, stops the non-suppressed listener, starts the suppressed listener, and sets the mouse_mode flag to True.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global mouse_mode
+
+    with pressed_lock:
+        pressed.clear()
+
+    stop_non_supp_listener()
+    start_supp_listener()
+
+    mouse_mode = True
+    print("Entered mouse mode")
+
+
+def exit_mouse_mode():
+    """
+    Exits mouse mode.
+
+    Clears the set of currently pressed keys to avoid sticky keys, stops the suppressed listener, starts the non-suppressed listener, and sets the mouse_mode flag to False.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global mouse_mode
+
+    with pressed_lock:
+        pressed.clear()
+
+    stop_supp_listener()
+    start_non_supp_listener()
+
+    mouse_mode = False
+    print("Exited mouse mode")
+
+
+# Mouse control loop
+
+def mouse_control_loop():
+    """
+    A loop that listens to keyboard events and controls the mouse accordingly.
+
+    This loop is responsible for detecting the exiting key (ESC) and exiting the application if mouse mode is enabled.
+    It also detects the toggling of mouse speed using the ALT key and prints the current mouse speed.
+
+    Furthermore, it detects movement keys (UP, DOWN, LEFT, RIGHT), mouse clicks (Z, X, C), and scroll keys (W, S, A, D) and moves the mouse accordingly.
+    It also prevents sticky keys by waiting for the key to be released before continuing.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global mouse_speed, running
+
+    while running:
         if not mouse_mode:
             continue
 
-        if is_pressed("print screen") and is_pressed("F12"):
-            continue
+        with pressed_lock:
+            pressed_keys = set(pressed)
 
-        if is_pressed("esc"):
-            break
+        # Detect exiting key
+        if key_present(pressed_keys, "esc") and mouse_mode:
+            exit_app()
 
-        if is_pressed("alt"):
-            if mouse_speed == min_mouse_speed:
-                mouse_speed = max_mouse_speed
-            else:
-                mouse_speed = min_mouse_speed
+        # Toggle mouse speed
+        if any(k.startswith("alt") for k in pressed_keys):
 
-            print(f"mouse_speed: {mouse_speed}")
+            mouse_speed = max_mouse_speed if mouse_speed == min_mouse_speed else min_mouse_speed
+            print("mouse_speed:", mouse_speed)
 
-            while is_pressed("alt"):
-                sleep(0.01)
+            while any(k.startswith("alt") for k in pressed_keys):
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
 
-        if is_pressed("up"):
-            mouseCon.move(0,-mouse_speed)
+        # Movement keys
+        if "up" in pressed_keys:
+            mouseCon.move(0, -mouse_speed)
 
-        if is_pressed("down"):
-            mouseCon.move(0,mouse_speed)
+        if "down" in pressed_keys:
+            mouseCon.move(0, mouse_speed)
 
-        if is_pressed("left"):
-            mouseCon.move(-mouse_speed,0)
+        if "left" in pressed_keys:
+            mouseCon.move(-mouse_speed, 0)
 
-        if is_pressed("right"):
-            mouseCon.move(mouse_speed,0)
-        
-        if is_pressed("z"):
+        if "right" in pressed_keys:
+            mouseCon.move(mouse_speed, 0)
+
+        # Mouse clicks
+        if "z" in pressed_keys: # Left
             mouseCon.click(mouse.Button.left)
-            while is_pressed("z"):
-                sleep(0.01)
-        
-        if is_pressed("x"):
+            while "z" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
+
+        if "x" in pressed_keys: # Middle
             mouseCon.click(mouse.Button.middle)
-            while is_pressed("x"):
-                sleep(0.01)
-        
-        if is_pressed("c"):
+            while "x" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
+
+        if "c" in pressed_keys: # Right
             mouseCon.click(mouse.Button.right)
-            while is_pressed("c"):
-                sleep(0.01)
-        
-        if is_pressed("s"):
-            mouseCon.scroll(0,-scroll_speed)
-            while is_pressed("s"):
-                sleep(0.01)
-        
-        if is_pressed("w"):
-            mouseCon.scroll(0,scroll_speed)
-            while is_pressed("w"):
-                sleep(0.01)
-        
-        if is_pressed("a"):
-            mouseCon.scroll(-scroll_speed,0)
-            while is_pressed("a"):
-                sleep(0.01)
-        
-        if is_pressed("d"):
-            mouseCon.scroll(scroll_speed,0)
-            while is_pressed("d"):
-                sleep(0.01)
+            while "c" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
 
-        sleep(0.01)
+        # Scroll
+        if "w" in pressed_keys: # Up
+            mouseCon.scroll(0, scroll_speed)
+            while "w" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
 
+        if "s" in pressed_keys: # Down
+            mouseCon.scroll(0, -scroll_speed)
+            while "s" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
 
+        if "a" in pressed_keys: # Left
+            mouseCon.scroll(-scroll_speed, 0)
+            while "a" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
+
+        if "d" in pressed_keys: # Right
+            mouseCon.scroll(scroll_speed, 0)
+            while "d" in pressed_keys:
+                time.sleep(0.01)
+                with pressed_lock:
+                    pressed_keys = set(pressed)
+
+        time.sleep(0.01)
+
+# ---------- Main ----------
 if __name__ == "__main__":
-    # Defining threads
-    # TkinterThread = threading.Thread(target=Tkinter_loop, args=())
-    # TkinterThread.start()
+    # Start in normal mode
+    start_non_supp_listener()
 
-    listeningThread = threading.Thread(target=listen, args=())
-    listeningThread.start()
+    # Mouse controller loop
+    MouseControlThread = threading.Thread(target=mouse_control_loop, daemon=True)
+    MouseControlThread.start()
+
+    print("Started. Toggle mouse mode with PrintScreen + F12.")
+    
+    try:
+        while running:
+            time.sleep(0.01)
+    except KeyboardInterrupt:
+        print("Exiting...")
+        stop_supp_listener()
+        stop_non_supp_listener()
