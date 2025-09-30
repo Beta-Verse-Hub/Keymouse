@@ -36,11 +36,37 @@ last_toggle_time = 0.0
 TOGGLE_DELAY = 0.3
 toggle_pressed = False
 
+# Control keys
+control_keys = {}
+
 
 
 # FUNCTIONS
 
+# JSON functions
+
+def get_control_keys():
+    """
+    Reads the control keys from the control_keys.json file and stores them in the global control_keys variable.
+
+    This function is idempotent and does not return anything.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global control_keys
+
+    with open("control keys.json", "r") as f:
+        control_keys = json.load(f)
+
+
 # Utility functions
+
 def name_from_key(key):
     """
     Returns the name of a key object as a lowercase string.
@@ -68,7 +94,7 @@ def name_from_key(key):
     if isinstance(key, keyboard.Key):
         return key.name.lower()
 
-    return str(key).lower()  # generic fallback
+    return str(key).lower()  # Generic fallback
 
 
 def key_present(pressed_keys, wanted_keys):
@@ -95,7 +121,7 @@ def key_present(pressed_keys, wanted_keys):
 
 def toggle_combo_present(pressed_keys):
     """
-    Checks if both the PrintScreen and insert keys are present in the given set of pressed keys.
+    Checks if both the toggle combo keys are present in a set of currently pressed keys.
 
     Parameters
     ----------
@@ -105,11 +131,11 @@ def toggle_combo_present(pressed_keys):
     Returns
     -------
     bool
-        True if both keys are present, False otherwise.
+        True if both the toggle combo keys are present, False otherwise.
     """
-    ps_names = ("print_screen", "print screen", "printscreen", "prt_sc")
-    insert_names = ("insert",)
-    return any(name in pressed_keys for name in ps_names) and any(name in pressed_keys for name in insert_names)
+    a = control_keys["toggle combo 1st button"] in pressed_keys
+    b = control_keys["toggle combo 2nd button"] in pressed_keys
+    return a and b
 
 
 # Listener Callbacks
@@ -345,7 +371,7 @@ def mouse_control_loop():
     -------
     None
     """
-    global mouse_speed, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed
+    global mouse_speed, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed, control_keys
 
     print("Started. Toggle mouse mode with PrintScreen + insert.")
 
@@ -353,7 +379,7 @@ def mouse_control_loop():
 
         time.sleep(0.01)
 
-        keys_down = kb.is_pressed("print screen") and kb.is_pressed("insert")
+        keys_down = kb.is_pressed(control_keys["toggle combo 1st button"]) and kb.is_pressed(control_keys["toggle combo 2nd button"])
 
         if keys_down and not toggle_pressed:
             if time.time() - last_toggle_time > TOGGLE_DELAY:
@@ -373,7 +399,7 @@ def mouse_control_loop():
             pressed_keys = set(pressed)
 
         # Detect exiting key
-        if key_present(pressed_keys, "esc") and mouse_mode:
+        if key_present(pressed_keys, control_keys["exit"]) and mouse_mode:
             exit_app()
 
         # Toggle mouse speed
@@ -388,63 +414,66 @@ def mouse_control_loop():
                     pressed_keys = set(pressed)
 
         # Movement keys
-        if "up" in pressed_keys:    mouseCon.move(0, -mouse_speed)
-        if "down" in pressed_keys:  mouseCon.move(0, mouse_speed)
-        if "left" in pressed_keys:  mouseCon.move(-mouse_speed, 0)
-        if "right" in pressed_keys: mouseCon.move(mouse_speed, 0)
+        if control_keys["move up"] in pressed_keys:    mouseCon.move(0, -mouse_speed)
+        if control_keys["move down"] in pressed_keys:  mouseCon.move(0, mouse_speed)
+        if control_keys["move left"] in pressed_keys:  mouseCon.move(-mouse_speed, 0)
+        if control_keys["move right"] in pressed_keys: mouseCon.move(mouse_speed, 0)
 
         # Mouse clicks
-        if "z" in pressed_keys: # Left
+        if control_keys["left click"] in pressed_keys: # Left
             mouseCon.click(mouse.Button.left)
-            while "z" in pressed_keys:
+            while control_keys["left click"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
-        if "x" in pressed_keys: # Middle
+        if control_keys["middle click"] in pressed_keys: # Middle
             mouseCon.click(mouse.Button.middle)
-            while "x" in pressed_keys:
+            while control_keys["middle click"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
-        if "c" in pressed_keys: # Right
+        if control_keys["right click"] in pressed_keys: # Right
             mouseCon.click(mouse.Button.right)
-            while "c" in pressed_keys:
+            while control_keys["right click"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
         # Scroll
-        if "w" in pressed_keys: # Up
+        if control_keys["scroll up"] in pressed_keys: # Up
             mouseCon.scroll(0, scroll_speed)
-            while "w" in pressed_keys:
+            while control_keys["scroll up"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
-        if "s" in pressed_keys: # Down
+        if control_keys["scroll down"] in pressed_keys: # Down
             mouseCon.scroll(0, -scroll_speed)
-            while "s" in pressed_keys:
+            while control_keys["scroll down"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
-        if "a" in pressed_keys: # Left
+        if control_keys["scroll left"] in pressed_keys: # Left
             mouseCon.scroll(-scroll_speed, 0)
-            while "a" in pressed_keys:
+            while control_keys["scroll left"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
-        if "d" in pressed_keys: # Right
+        if control_keys["scroll right"] in pressed_keys: # Right
             mouseCon.scroll(scroll_speed, 0)
-            while "d" in pressed_keys:
+            while control_keys["scroll right"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
 # MAIN
 if __name__ == "__main__":
+    # Get Control Keys
+    get_control_keys()
+
     # Mouse controller loop
     mouse_control_loop()
