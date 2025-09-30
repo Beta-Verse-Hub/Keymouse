@@ -17,11 +17,12 @@ running = True
 min_mouse_speed = 3
 max_mouse_speed = 7
 scroll_speed = 2
+mouse_speed = min_mouse_speed
+speed_change_mode = "cursor"
 
 # Mouse parameters
 mouseCon = mouse.Controller()
 mouse_mode = False
-mouse_speed = min_mouse_speed
 
 # Pressed key variables
 pressed = set()
@@ -371,7 +372,7 @@ def mouse_control_loop():
     -------
     None
     """
-    global mouse_speed, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed, control_keys
+    global mouse_speed, scroll_speed, speed_change_mode, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed, control_keys
 
     print("Started. Toggle mouse mode with PrintScreen + insert.")
 
@@ -403,21 +404,36 @@ def mouse_control_loop():
             exit_app()
 
         # Toggle mouse speed
-        if any(k.startswith("alt") for k in pressed_keys):
+        for i in range(1, 11):
+            if key_present(pressed_keys, control_keys[f"speed {i}"]):
+                if speed_change_mode == "cursor":
+                    mouse_speed = i
+                    print(f"Cursor speed: {mouse_speed}")
+                elif speed_change_mode == "scroll":
+                    scroll_speed = i
+                    print(f"Scroll speed: {scroll_speed}")
 
-            mouse_speed = max_mouse_speed if mouse_speed == min_mouse_speed else min_mouse_speed
-            print("mouse_speed:", mouse_speed)
-
-            while any(k.startswith("alt") for k in pressed_keys):
-                time.sleep(0.01)
-                with pressed_lock:
-                    pressed_keys = set(pressed)
+                while key_present(pressed_keys, control_keys[f"speed {i}"]):
+                    time.sleep(0.01)
+                    with pressed_lock:
+                        pressed_keys = set(pressed)
 
         # Movement keys
-        if control_keys["move up"] in pressed_keys:    mouseCon.move(0, -mouse_speed)
-        if control_keys["move down"] in pressed_keys:  mouseCon.move(0, mouse_speed)
-        if control_keys["move left"] in pressed_keys:  mouseCon.move(-mouse_speed, 0)
-        if control_keys["move right"] in pressed_keys: mouseCon.move(mouse_speed, 0)
+        if key_present(pressed_keys, control_keys["move up"]):
+            mouseCon.move(0, -mouse_speed)
+            speed_change_mode = "cursor"
+
+        if key_present(pressed_keys, control_keys["move down"]):
+            mouseCon.move(0, mouse_speed)
+            speed_change_mode = "cursor"
+
+        if key_present(pressed_keys, control_keys["move left"]):
+            mouseCon.move(-mouse_speed, 0)
+            speed_change_mode = "cursor"
+
+        if key_present(pressed_keys, control_keys["move right"]):
+            mouseCon.move(mouse_speed, 0)
+            speed_change_mode = "cursor"
 
         # Mouse clicks
         if control_keys["left click"] in pressed_keys: # Left
@@ -444,6 +460,7 @@ def mouse_control_loop():
         # Scroll
         if control_keys["scroll up"] in pressed_keys: # Up
             mouseCon.scroll(0, scroll_speed)
+            speed_change_mode = "scroll"
             while control_keys["scroll up"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
@@ -451,6 +468,7 @@ def mouse_control_loop():
 
         if control_keys["scroll down"] in pressed_keys: # Down
             mouseCon.scroll(0, -scroll_speed)
+            speed_change_mode = "scroll"
             while control_keys["scroll down"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
@@ -458,6 +476,7 @@ def mouse_control_loop():
 
         if control_keys["scroll left"] in pressed_keys: # Left
             mouseCon.scroll(-scroll_speed, 0)
+            speed_change_mode = "scroll"
             while control_keys["scroll left"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
@@ -465,6 +484,7 @@ def mouse_control_loop():
 
         if control_keys["scroll right"] in pressed_keys: # Right
             mouseCon.scroll(scroll_speed, 0)
+            speed_change_mode = "scroll"
             while control_keys["scroll right"] in pressed_keys:
                 time.sleep(0.01)
                 with pressed_lock:
