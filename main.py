@@ -1,6 +1,8 @@
 # Importing modules
 from pynput import keyboard, mouse
 import threading
+import keyboard as kb
+import json
 import time
 import sys
 
@@ -29,6 +31,11 @@ pressed_lock = threading.Lock()
 non_supp_listener = None
 supp_listener = None
 
+# Toggle variables
+last_toggle_time = 0.0
+TOGGLE_DELAY = 0.3
+toggle_pressed = False
+
 
 
 # FUNCTIONS
@@ -39,7 +46,7 @@ def name_from_key(key):
     Returns the name of a key object as a lowercase string.
 
     For alphanumeric keys, this is the character itself (e.g. "a" or "A" become "a").
-    For other keys, this is the name of the key (e.g. "ctrl" or "f12").
+    For other keys, this is the name of the key (e.g. "ctrl" or "insert").
 
     Parameters
     ----------
@@ -57,7 +64,7 @@ def name_from_key(key):
             return key.char.lower()
         return str(key)
     
-    # If it's a Key (special key: arrows, esc, f12, etc.)
+    # If it's a Key (special key: arrows, esc, insert, etc.)
     if isinstance(key, keyboard.Key):
         return key.name.lower()
 
@@ -88,7 +95,7 @@ def key_present(pressed_keys, wanted_keys):
 
 def toggle_combo_present(pressed_keys):
     """
-    Checks if both the PrintScreen and F12 keys are present in the given set of pressed keys.
+    Checks if both the PrintScreen and insert keys are present in the given set of pressed keys.
 
     Parameters
     ----------
@@ -101,8 +108,9 @@ def toggle_combo_present(pressed_keys):
         True if both keys are present, False otherwise.
     """
     ps_names = ("print_screen", "print screen", "printscreen", "prt_sc")
-    f12_names = ("f12",)
-    return any(name in pressed_keys for name in ps_names) and any(name in pressed_keys for name in f12_names)
+    insert_names = ("insert",)
+    return any(name in pressed_keys for name in ps_names) and any(name in pressed_keys for name in insert_names)
+
 
 # Listener Callbacks
 
@@ -146,52 +154,6 @@ def on_release_common(key):
         pressed.discard(n)
 
 
-# Non-suppressed callbacks
-
-def on_press_non_supp(key):  
-    """
-    The callback for the on_press event of the non-suppressed listener.
-
-    This function is responsible for adding the name of the pressed key to the set of currently pressed keys.
-
-    Additionally, it checks if both the PrintScreen and F12 keys are present and, if so, starts the suppressed mode in a separate thread.
-
-    Parameters
-    ----------
-    key : pynput.keyboard.Key
-        The key that was pressed.
-
-    Returns
-    -------
-    None
-    """
-    on_press_common(key)
-    
-    with pressed_lock:
-        pressed_keys = set(pressed)
-    
-    if toggle_combo_present(pressed_keys):
-        threading.Thread(target=enter_mouse_mode, daemon=True).start()
-
-
-def on_release_non_supp(key):
-    """
-    The callback for the on_release event of the non-suppressed listener.
-
-    This function is responsible for removing the name of the released key from the set of currently pressed keys.
-
-    Parameters
-    ----------
-    key : pynput.keyboard.Key
-        The key that was released.
-
-    Returns
-    -------
-    None
-    """
-    on_release_common(key)
-
-
 # Suppressed callbacks
 
 def on_press_supp(key):
@@ -200,7 +162,7 @@ def on_press_supp(key):
 
     This function is responsible for adding the name of the pressed key to the set of currently pressed keys.
 
-    Additionally, it checks if both the PrintScreen and F12 keys are present and, if so, exits the suppressed mode by calling exit_mouse_mode in a separate thread.
+    Additionally, it checks if both the PrintScreen and insert keys are present and, if so, exits the suppressed mode by calling exit_mouse_mode in a separate thread.
 
     Parameters
     ----------
@@ -211,13 +173,17 @@ def on_press_supp(key):
     -------
     None
     """
+    global pressed_keys
     on_press_common(key)
-    
+
     with pressed_lock:
         pressed_keys = set(pressed)
-    
+
+    if not mouse_mode:
+        kb.press(key)
+
     if toggle_combo_present(pressed_keys):
-        threading.Thread(target=exit_mouse_mode, daemon=True).start()
+        exit_mouse_mode()
 
 
 def on_release_supp(key):
@@ -237,56 +203,17 @@ def on_release_supp(key):
     """
     on_release_common(key)
 
+    if not mouse_mode:
+        kb.release(key)
+
 
 # Listeners
-
-def start_non_supp_listener():
-    """
-    Starts the non-suppressed listener if it is not already running.
-
-    The non-suppressed listener is responsible for capturing the PrintScreen + F12 combination and starting the suppressed mode.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
-    """
-    global non_supp_listener
-
-    if non_supp_listener is None:
-        non_supp_listener = keyboard.Listener(on_press=on_press_non_supp, on_release=on_release_non_supp, daemon = True)
-        non_supp_listener.start()
-
-
-def stop_non_supp_listener():
-    """
-    Stops the non-suppressed listener if it is running.
-
-    The non-suppressed listener is responsible for capturing the PrintScreen + F12 combination and starting the suppressed mode.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
-    """
-    global non_supp_listener
-
-    if non_supp_listener is not None:
-        non_supp_listener.stop()
-        non_supp_listener = None
-
 
 def start_supp_listener():
     """
     Starts the suppressed listener if it is not already running.
 
-    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + F12 combination is pressed.
+    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + insert combination is pressed.
 
     Parameters
     ----------
@@ -307,7 +234,7 @@ def stop_supp_listener():
     """
     Stops the suppressed listener if it is running.
 
-    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + F12 combination is pressed.
+    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + insert combination is pressed.
 
     Parameters
     ----------
@@ -341,7 +268,6 @@ def exit_app():
     None
     """
     global running
-    stop_non_supp_listener()
     stop_supp_listener()
     running = False
     sys.exit(0)
@@ -368,7 +294,6 @@ def enter_mouse_mode():
     with pressed_lock:
         pressed.clear()
 
-    stop_non_supp_listener()
     start_supp_listener()
 
     mouse_mode = True
@@ -395,7 +320,6 @@ def exit_mouse_mode():
         pressed.clear()
 
     stop_supp_listener()
-    start_non_supp_listener()
 
     mouse_mode = False
     print("Exited mouse mode")
@@ -421,9 +345,27 @@ def mouse_control_loop():
     -------
     None
     """
-    global mouse_speed, running
+    global mouse_speed, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed
+
+    print("Started. Toggle mouse mode with PrintScreen + insert.")
 
     while running:
+
+        time.sleep(0.01)
+
+        keys_down = kb.is_pressed("print screen") and kb.is_pressed("insert")
+
+        if keys_down and not toggle_pressed:
+            if time.time() - last_toggle_time > TOGGLE_DELAY:
+                if mouse_mode:
+                    exit_mouse_mode()
+                else:
+                    enter_mouse_mode()
+                last_toggle_time = time.time()
+            toggle_pressed = True
+        elif not keys_down:
+            toggle_pressed = False
+
         if not mouse_mode:
             continue
 
@@ -446,17 +388,10 @@ def mouse_control_loop():
                     pressed_keys = set(pressed)
 
         # Movement keys
-        if "up" in pressed_keys:
-            mouseCon.move(0, -mouse_speed)
-
-        if "down" in pressed_keys:
-            mouseCon.move(0, mouse_speed)
-
-        if "left" in pressed_keys:
-            mouseCon.move(-mouse_speed, 0)
-
-        if "right" in pressed_keys:
-            mouseCon.move(mouse_speed, 0)
+        if "up" in pressed_keys:    mouseCon.move(0, -mouse_speed)
+        if "down" in pressed_keys:  mouseCon.move(0, mouse_speed)
+        if "left" in pressed_keys:  mouseCon.move(-mouse_speed, 0)
+        if "right" in pressed_keys: mouseCon.move(mouse_speed, 0)
 
         # Mouse clicks
         if "z" in pressed_keys: # Left
@@ -509,23 +444,7 @@ def mouse_control_loop():
                 with pressed_lock:
                     pressed_keys = set(pressed)
 
-        time.sleep(0.01)
-
-# ---------- Main ----------
+# MAIN
 if __name__ == "__main__":
-    # Start in normal mode
-    start_non_supp_listener()
-
     # Mouse controller loop
-    MouseControlThread = threading.Thread(target=mouse_control_loop, daemon=True)
-    MouseControlThread.start()
-
-    print("Started. Toggle mouse mode with PrintScreen + F12.")
-    
-    try:
-        while running:
-            time.sleep(0.01)
-    except KeyboardInterrupt:
-        print("Exiting...")
-        stop_supp_listener()
-        stop_non_supp_listener()
+    mouse_control_loop()
