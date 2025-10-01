@@ -3,15 +3,19 @@
     "move down"               : "down",
     "move left"               : "left",
     "move right"              : "right",
+
     "scroll up"               : "w",
     "scroll down"             : "s",
     "scroll left"             : "a",
     "scroll right"            : "d",
+
     "left click"              : "z",
     "middle click"            : "x",
     "right click"             : "c",
+
     "toggle combo 1st button" : "print_screen",
     "toggle combo 2nd button" : "insert",
+
     "speed 1"                 : "1",
     "speed 2"                 : "2",
     "speed 3"                 : "3",
@@ -22,5 +26,6 @@
     "speed 8"                 : "8",
     "speed 9"                 : "9",
     "speed 10"                : "0",
+
     "exit"                    : "esc"
 }
