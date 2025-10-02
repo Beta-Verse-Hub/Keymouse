@@ -420,6 +420,7 @@ def ui_loop():
 
     # Configure the window
     root.overrideredirect(True) # Remove title bar
+    root.attributes("-topmost", True) # Setting it always on top
     root.attributes("-alpha", ui_settings["transparency"]) # Set transparency
     root.configure(bg=ui_settings["background color"]) # Set background color
 

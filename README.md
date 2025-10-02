@@ -41,12 +41,19 @@ The default configuration is like this:
 | Exit program | Esc                  |
 
 
+## UI
+
+The UI can be customized in the custom_ui.json.
+The UI only appears after mode changing or speed changing for a second.
+
+
 ## How to use
 
 1. Download the zip file from the releases section.
 2. Unzip the zip file and keep the program in this format in one folder (the order doesn't matter).
 .
 ├── Keymouse.exe         # Main executable file
+├── custom ui.json       # JSON file for UI customization
 ├── control keys.json    # JSON file with key mappings
 ├── LICENCE              # The Licence
 └── README.md            # Project documentation
