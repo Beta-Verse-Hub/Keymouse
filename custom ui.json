@@ -1,0 +1,14 @@
+{
+    "width"                     : 200,
+    "height"                    : 150,
+    
+    "background color"          : "#111111",
+    "transparency"              : 0.7,
+
+    "text alignment"            : "center",
+
+    "font"                      : "Arial",
+    "font color"                : "#FFFFFF",
+    "font size"                 : 14,
+    "padding between each line" : 10
+}

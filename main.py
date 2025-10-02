@@ -2,6 +2,7 @@
 from pynput import keyboard, mouse
 import threading
 import keyboard as kb
+import tkinter as tk
 import json
 import time
 import sys
@@ -14,10 +15,10 @@ import sys
 running = True
 
 # Speeds
-min_mouse_speed = 3
-max_mouse_speed = 7
+min_cursor_speed = 3
+max_cursor_speed = 7
 scroll_speed = 2
-mouse_speed = min_mouse_speed
+cursor_speed = min_cursor_speed
 speed_change_mode = "cursor"
 
 # Mouse parameters
@@ -40,11 +41,33 @@ toggle_pressed = False
 # Control keys
 control_keys = {}
 
+# UI variables
+ui_settings = {}
 
 
 # FUNCTIONS
 
 # JSON functions
+
+def get_ui_settings():
+    """
+    Loads the UI data from the custom ui JSON file.
+
+    This function reads the UI data from the custom ui JSON file and stores it in the ui_data dictionary.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global ui_settings
+
+    with open("custom ui.json", "r") as f:
+        ui_settings = json.load(f)
+
 
 def get_control_keys():
     """
@@ -249,7 +272,7 @@ def start_supp_listener():
     """
     Starts the suppressed listener if it is not already running.
 
-    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + insert combination is pressed.
+    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the toggle combination is pressed.
 
     Parameters
     ----------
@@ -270,7 +293,7 @@ def stop_supp_listener():
     """
     Stops the suppressed listener if it is running.
 
-    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the PrintScreen + insert combination is pressed.
+    The suppressed listener is responsible for capturing keyboard events while in mouse mode and exiting mouse mode when the toggle combination is pressed.
 
     Parameters
     ----------
@@ -333,7 +356,6 @@ def enter_mouse_mode():
     start_supp_listener()
 
     mouse_mode = True
-    print("Entered mouse mode")
 
 
 def exit_mouse_mode():
@@ -358,16 +380,15 @@ def exit_mouse_mode():
     stop_supp_listener()
 
     mouse_mode = False
-    print("Exited mouse mode")
 
 
-# Mouse control loop
+# UI loop
 
-def mouse_control_loop():
+def ui_loop():
     """
-    Main loop for mouse control.
+    Updates the UI every 100 milliseconds.
 
-    Toggles mouse mode with PrintScreen + insert combination, exits the application with the exit key, and toggles mouse speed with the number keys (1-10).
+    Checks if the mouse mode, cursor speed, or scroll speed have changed and updates the UI accordingly.
 
     Parameters
     ----------
@@ -377,14 +398,129 @@ def mouse_control_loop():
     -------
     None
     """
-    global mouse_speed, scroll_speed, speed_change_mode, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed, control_keys
+    global running, mouse_mode, cursor_speed, scroll_speed, ui_settings
 
-    print(f"Started. Toggle mouse mode with {control_keys["toggle combo 1st button"]} + {control_keys["toggle combo 2nd button"]}.")
+    # Set up UI viewing counter
+    counter = 0
+
+    # Set up old mouse mode, cursor speed, and scroll speed
+    old_mouse_mode = mouse_mode
+    old_cursor_speed = cursor_speed
+    old_scroll_speed = scroll_speed
+
+    # Set up UI size
+    ui_width = ui_settings["width"]
+    ui_height = ui_settings["height"]
+
+    # Main root
+    root = tk.Tk()
+
+    # Minimize the window
+    root.withdraw()
+
+    # Configure the window
+    root.overrideredirect(True) # Remove title bar
+    root.attributes("-alpha", ui_settings["transparency"]) # Set transparency
+    root.configure(bg=ui_settings["background color"]) # Set background color
+
+    # Set window size and position
+    root.geometry(f"{ui_width}x{ui_height}+{(root.winfo_screenwidth()-ui_width)//2}+{root.winfo_screenheight()-int(ui_height*1.5)}")
+
+    # Mouse mode label
+    mouse_mode_label = tk.Label(root,
+                                text=f"Mouse Mode : {mouse_mode}",
+                                font=(ui_settings["font"], ui_settings["font size"]),
+                                bg=ui_settings["background color"],
+                                fg=ui_settings["font color"])
+    mouse_mode_label.pack(pady=ui_settings["padding between each line"])
+
+    # Cursor speed label
+    cursor_speed_label = tk.Label(root,
+                                text=f"Mouse Mode : {mouse_mode}",
+                                font=(ui_settings["font"], ui_settings["font size"]),
+                                bg=ui_settings["background color"],
+                                fg=ui_settings["font color"])
+    cursor_speed_label.pack(pady=ui_settings["padding between each line"])
+
+    # Scroll speed label
+    scroll_speed_label = tk.Label(root,
+                                text=f"Mouse Mode : {mouse_mode}",
+                                font=(ui_settings["font"], ui_settings["font size"]),
+                                bg=ui_settings["background color"],
+                                fg=ui_settings["font color"])
+    scroll_speed_label.pack(pady=ui_settings["padding between each line"])
+
+    # UI updating function
+    def update_ui():
+        """
+        Updates the UI every 100 milliseconds.
+
+        Checks if the mouse mode, cursor speed, or scroll speed have changed and updates the UI accordingly.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        global running, mouse_mode, cursor_speed, scroll_speed
+        nonlocal counter, old_mouse_mode, old_cursor_speed, old_scroll_speed
+
+        # Check if the UI should be hidden
+        if counter > 0:
+            counter -= 1
+            if counter == 0:
+                root.withdraw()
+
+        # Check if the mouse mode, cursor speed, or scroll speed have changed
+        if mouse_mode != old_mouse_mode or cursor_speed != old_cursor_speed or scroll_speed != old_scroll_speed:
+            root.deiconify()
+
+            mouse_mode_label.config(text=f"Mouse Mode : {mouse_mode}")
+            cursor_speed_label.config(text=f"Cursor Speed : {cursor_speed}")
+            scroll_speed_label.config(text=f"Scroll Speed : {scroll_speed}")
+
+            old_mouse_mode = mouse_mode
+            old_cursor_speed = cursor_speed
+            old_scroll_speed = scroll_speed
+
+            counter = 10
+
+        # Start the UI updating function again after 100 milliseconds
+        root.after(100, update_ui)
+
+    # Start the UI updating function after 100 milliseconds
+    root.after(100, update_ui)
+
+    # Start the main loop
+    root.mainloop()
+
+
+# Mouse control loop
+
+def mouse_control_loop():
+    """
+    Main loop for mouse control.
+
+    Toggles mouse mode with t combination, exits the application with the exit key, and toggles mouse speed with the number keys (1-10).
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    global cursor_speed, scroll_speed, speed_change_mode, running, last_toggle_time, TOGGLE_DELAY, toggle_pressed, control_keys
 
     while running:
 
         time.sleep(0.01)
 
+        # Check if the toggle combo is pressed
         keys_down = kb.is_pressed(control_keys["toggle combo 1st button"]) and kb.is_pressed(control_keys["toggle combo 2nd button"])
 
         if keys_down and not toggle_pressed:
@@ -398,9 +534,11 @@ def mouse_control_loop():
         elif not keys_down:
             toggle_pressed = False
 
+        # Check if the mouse mode is enabled
         if not mouse_mode:
             continue
 
+        # Get currently pressed keys
         with pressed_lock:
             pressed_keys = set(pressed)
 
@@ -412,11 +550,9 @@ def mouse_control_loop():
         for i in range(1, 11):
             if key_present(pressed_keys, control_keys[f"speed {i}"]):
                 if speed_change_mode == "cursor":
-                    mouse_speed = i
-                    print(f"Cursor speed: {mouse_speed}")
+                    cursor_speed = i
                 elif speed_change_mode == "scroll":
                     scroll_speed = i
-                    print(f"Scroll speed: {scroll_speed}")
 
                 while key_present(pressed_keys, control_keys[f"speed {i}"]):
                     time.sleep(0.01)
@@ -425,19 +561,19 @@ def mouse_control_loop():
 
         # Movement keys
         if key_present(pressed_keys, control_keys["move up"]):
-            mouseCon.move(0, -mouse_speed)
+            mouseCon.move(0, -cursor_speed)
             speed_change_mode = "cursor"
 
         if key_present(pressed_keys, control_keys["move down"]):
-            mouseCon.move(0, mouse_speed)
+            mouseCon.move(0, cursor_speed)
             speed_change_mode = "cursor"
 
         if key_present(pressed_keys, control_keys["move left"]):
-            mouseCon.move(-mouse_speed, 0)
+            mouseCon.move(-cursor_speed, 0)
             speed_change_mode = "cursor"
 
         if key_present(pressed_keys, control_keys["move right"]):
-            mouseCon.move(mouse_speed, 0)
+            mouseCon.move(cursor_speed, 0)
             speed_change_mode = "cursor"
 
         # Mouse clicks
@@ -499,6 +635,13 @@ def mouse_control_loop():
 if __name__ == "__main__":
     # Get Control Keys
     get_control_keys()
+
+    # Get UI settings
+    get_ui_settings()
+
+    # Start UI loop
+    ui_thread = threading.Thread(target=ui_loop, daemon=True)
+    ui_thread.start()
 
     # Mouse controller loop
     mouse_control_loop()
